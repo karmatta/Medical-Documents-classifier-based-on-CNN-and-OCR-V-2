@@ -34,10 +34,12 @@ from flask import Flask, request
 import requests
 import logging
 
+
 sess_config = tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1,
 allow_soft_placement=True, device_count = {'CPU': 1})
 sess = tf.Session(graph=tf.get_default_graph(),config=sess_config)
 K.set_session(sess)
+
 
 with open('model_config', 'r') as configfile:
     config = json.load(configfile)
@@ -86,10 +88,10 @@ class LoadModel:
         self.graph = tf.get_default_graph()
 
     # Function to decode image to jpg from base64
-    def decode_image(self, image_path):
-        with open(image_path, 'r') as data_file:
-            self.data = data_file.read()
-        self.data = json.loads(self.data)
+    def decode_image(self, jsn):
+        #with open(image_path, 'r') as data_file:
+         #   self.data = data_file.read()
+        self.data = json.loads(json.loads(jsn))
         return Image.open(BytesIO(base64.b64decode(self.data['base64Data'][0])))
     
     
@@ -97,41 +99,62 @@ class LoadModel:
     def generate_image_features(self, image, reshape=(225, 225)):
         # GENERATING FEATURES
         self.image = image.resize(reshape)
-        self.image.load()
+        #self.image.load()
         self.x = np.asarray(self.image, dtype="int32" )
         self.x = np.expand_dims(self.x, axis=0) 
         with self.graph.as_default():
-            self.img_features = self.resnet50.predict(self.x, verbose=2) 
+            self.img_features = self.resnet50.predict(self.x, verbose=0) 
         self.img_features = self.img_features.squeeze() 
         self.img_features = self.img_features.flatten()
         return self.img_features
 
     # Predict function
-    def predict(self, image_path):
+    def predict(self, jsn):
     
         self.start = time.time()
-
-        self.img = self.decode_image(image_path)
+        self.start_json = time.time()
+        self.img = self.decode_image(jsn)
+        self.end_json = time.time()
 
         # Create text features
+        self.start_clean_string = time.time()
         self.x_txt = tu.clean_string(ocr.get_text_from_image(self.img))
-        self.x_txt = tu.make_tensor_np(self.x_txt, config['w2i'], config['input_text_shape'])
-    
+        self.end_clean_string = time.time()
+
+        self.x_txt = tu.make_tensor_np(self.x_txt, config['w2i'], config['input_text_shape']) 
+
         # Create image features
+        self.start_gif = time.time()
         self.x_img = np.squeeze(self.generate_image_features(self.img))
-        
+        self.end_gif = time.time()        
+
+        self.start_pred = time.time()
         # Make model prediction
         with self.graph.as_default():
             self.scores = self.model.predict([self.x_img.reshape(-1, config['input_img_shape']), self.x_txt.reshape(-1, config['input_text_shape'])]).tolist()
-        
+            _, self.acc = self.model.evaluate([x_img_train, x_txt_train], y_train, verbose=2)
+            print("Restored model, train accuracy: {:5.2f}%".format(100*self.acc))
+            _, self.acc = self.model.evaluate([x_img_test, x_txt_test], y_test, verbose=2)
+            print("Restored model, test accuracy: {:5.2f}%".format(100*self.acc))
+        self.end_pred = time.time()
+
         self.classes = ['Aadhar Card', 'Diagnostic Bill', 'Discharge Summary', 'Insurance Card', 'Internal Case Papers', 'Pan Card', 'Phramacy Bill', 'Policy Copy', 'Prescriptions' , 'Receipts']
     
         # Prepare response and return
         self.response = dict(zip(self.classes, self.scores[0]))
         print('Prediction:', max(self.response.items(), key=operator.itemgetter(1))[0])
-    
         self.end = time.time()
+        
         self.dur = self.end - self.start
+        
+        self.dur_json = self.end_json - self.start_json
+        self.dur_clean_string = self.end_clean_string - self.start_clean_string
+        self.dur_gif = self.end_gif - self.start_gif
+        self.dur_pred = self.end_pred - self.start_pred
+        print("Execution Time decode:", self.dur_json,"seconds")
+        print("Execution Time OCR:", self.dur_clean_string,"seconds")
+        print("Execution Time img features:", self.dur_gif,"seconds")
+        print("Execution Time pred:", self.dur_pred,"seconds")
     
         if self.dur<60:
             print("Execution Time:", self.dur,"seconds")
@@ -144,15 +167,14 @@ class LoadModel:
         
         return json.dumps(self.response)
     
-global loaded_model
+# Load the model 
 loaded_model = LoadModel('model2.h5')
-
    
 # App trigger
 @app.route("/", methods=['GET', 'POST'])
 def wrapper():
-    req = request.get_data()    #'{"org":"Tuura"}'
+    req = request.get_data()   
     return loaded_model.predict(req)
 
 if __name__ == '__main__':
-    app.run(port=5001, debug=True)
+    app.run(port=5000, debug=False)
