@@ -1,11 +1,8 @@
 **To Start API:**
--
 ```
 $ python3 predict_API.py
 ```
-
 **Get Request:**
--
 ```
 $ python3
 >> import flask

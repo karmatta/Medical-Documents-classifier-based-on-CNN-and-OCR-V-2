@@ -85,8 +85,9 @@ class LoadModel:
     # Function to decode image to jpg from base64
     def decode_image(self, jsn):
         self.data = json.loads(json.loads(jsn))
-        print("Image class:", self.data['imageId'])
-        return Image.open(BytesIO(base64.b64decode(self.data['base64ImageData'][0])))
+        self.imageid = self.data['imageId']
+        print("Image class:", self.imageid)
+        return Image.open(BytesIO(base64.b64decode(self.data['base64ImageData'][0]))), self.imageid
     
     
     # Function to generate resnet features
@@ -104,7 +105,7 @@ class LoadModel:
     
         self.start = time.time()
         self.start_json = time.time()
-        self.img = self.decode_image(jsn)
+        self.img, self.imageid = self.decode_image(jsn)
         self.end_json = time.time()
 
         # Create text features
@@ -129,8 +130,11 @@ class LoadModel:
         self.classes = ['Aadhar Card', 'Diagnostic Bill', 'Discharge Summary', 'Insurance Card', 'Internal Case Papers', 'Pan Card', 'Phramacy Bill', 'Policy Copy', 'Prescriptions' , 'Receipts']
     
         # Prepare response and return
-        self.response = dict(zip(self.classes, self.scores[0]))
-        print('Prediction:', max(self.response.items(), key=operator.itemgetter(1))[0])
+        self.scores_dict = dict(zip(self.classes, self.scores[0]))
+        self.prediction = max(self.scores_dict.items(), key=operator.itemgetter(1))[0]
+        print('Prediction:', self.prediction)
+        
+        self.response = dict({'prediction':self.prediction, 'imageid':self.imageid, 'scores_dict':self.scores_dict})
         self.end = time.time()
         
         self.dur = self.end - self.start
@@ -163,7 +167,8 @@ loaded_model = LoadModel(model_path)
 @app.route("/", methods=['GET', 'POST'])
 def wrapper():
     req = request.get_data()   
-    return loaded_model.predict(req)
+    res = loaded_model.predict(req)
+    return res
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False)
