@@ -19,7 +19,7 @@ import ocr
 from keras_self_attention import SeqSelfAttention
 import doc_classifier_model as dcm
 from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TensorBoard
-from keras.optimizers import Adagrad
+#from keras.optimizers import Adagrad
 from keras import backend as K
 import json
 import sys
@@ -71,7 +71,6 @@ sess_config = tf.ConfigProto()
 class LoadModel:
 
     def __init__(self, model_path):
-        #with K.get_session().graph.as_default():
         self.sess  = tf.Session(config=sess_config)
         K.set_session(self.sess) 
         print('Loading ResNet50...')
@@ -81,31 +80,23 @@ class LoadModel:
         self.model = dcm.build_doc_classifier(config['input_text_shape'], config['input_img_shape'], config['n_classes'], config['vocab_size'])
         self.model.load_weights(model_path)
         print('Doc Classifier Loaded...')
-        self.opt = Adagrad(lr = 1e-3)
-        self.model.compile(loss='categorical_crossentropy',
-              optimizer=self.opt,
-              metrics=["accuracy"])
         self.graph = tf.get_default_graph()
 
     # Function to decode image to jpg from base64
     def decode_image(self, jsn):
-        #with open(image_path, 'r') as data_file:
-         #   self.data = data_file.read()
         self.data = json.loads(json.loads(jsn))
-        return Image.open(BytesIO(base64.b64decode(self.data['base64Data'][0])))
+        print("Image class:", self.data['imageId'])
+        return Image.open(BytesIO(base64.b64decode(self.data['base64ImageData'][0])))
     
     
     # Function to generate resnet features
     def generate_image_features(self, image, reshape=(225, 225)):
         # GENERATING FEATURES
         self.image = image.resize(reshape)
-        #self.image.load()
         self.x = np.asarray(self.image, dtype="int32" )
         self.x = np.expand_dims(self.x, axis=0) 
         with self.graph.as_default():
-            self.img_features = self.resnet50.predict(self.x, verbose=0) 
-        self.img_features = self.img_features.squeeze() 
-        self.img_features = self.img_features.flatten()
+            self.img_features = self.resnet50.predict(self.x, verbose=0).squeeze().flatten()
         return self.img_features
 
     # Predict function
@@ -132,11 +123,8 @@ class LoadModel:
         # Make model prediction
         with self.graph.as_default():
             self.scores = self.model.predict([self.x_img.reshape(-1, config['input_img_shape']), self.x_txt.reshape(-1, config['input_text_shape'])]).tolist()
-            _, self.acc = self.model.evaluate([x_img_train, x_txt_train], y_train, verbose=2)
-            print("Restored model, train accuracy: {:5.2f}%".format(100*self.acc))
-            _, self.acc = self.model.evaluate([x_img_test, x_txt_test], y_test, verbose=2)
-            print("Restored model, test accuracy: {:5.2f}%".format(100*self.acc))
-        self.end_pred = time.time()
+            self.end_pred = time.time()
+            
 
         self.classes = ['Aadhar Card', 'Diagnostic Bill', 'Discharge Summary', 'Insurance Card', 'Internal Case Papers', 'Pan Card', 'Phramacy Bill', 'Policy Copy', 'Prescriptions' , 'Receipts']
     
@@ -168,7 +156,8 @@ class LoadModel:
         return json.dumps(self.response)
     
 # Load the model 
-loaded_model = LoadModel('model2.h5')
+model_path = "models/model2.h5"
+loaded_model = LoadModel(model_path)
    
 # App trigger
 @app.route("/", methods=['GET', 'POST'])
