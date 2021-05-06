@@ -30,7 +30,7 @@ entrypoints==0.3
 fastai==1.0.59
 fastprogress==0.1.21
 Flask==1.1.1
-Flask-Cors==3.0.8
+Flask-Cors==3.0.9
 gast==0.3.2
 google-pasta==0.1.8
 grpcio==1.25.0
